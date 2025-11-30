@@ -77,7 +77,167 @@
             <span>👇 Colle ton script ICI (Zone noire) :</span>
             <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
         </div>
-        <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
+        <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici...">
+// =============================================================
+// === STRATÉGIE V5.0 - TRIPLE FILTRE D'IMPULSION (CORRIGÉE) ===
+// =============================================================
+
+// ATTENTION : Pour un backtest précis, l'émulateur force l'état de départ à 20$
+// La fonction tp_loadState ne doit PAS être utilisée dans runTrendPullbackBot_5m() ici.
+
+const TP_CFG = {
+  // --- Trading ---
+  MIN_ORDER_USDT: 1,           
+  USE_PERCENT_CAPITAL: 0.2,    
+  TAKE_PROFIT: 0.025,          
+  STOP_LOSS: 0.007,            
+  FEES_RATE: 0.0009,           
+
+  // --- Indicateurs Techniques ---
+  SMA_FAST: 10,                
+  SMA_MEDIUM: 20,              
+  SMA_SLOW: 50,                
+  TREND_STRENGTH_MIN: 0.003,   
+
+  // --- Pullback / Retrait ---
+  PULLBACK_LOOKBACK: 12,       
+  PULLBACK_MIN: 0.003,         
+  PULLBACK_MAX: 0.01,          
+};
+
+// Fonctions qui ne changent pas : getLatestPrice, getPriceHistory, logAction...
+// tp_saveState est utilisée pour la sauvegarde. tp_loadState n'est pas utilisée.
+
+function tp_saveState(state) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty("TP_USDT", state.usdt);
+  properties.setProperty("TP_BTC", state.btc);
+  properties.setProperty("TP_AVG", state.avg);
+}
+
+function calculateSMA(prices, period) {
+  if (prices.length < period) return null;
+  const slice = prices.slice(prices.length - period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+function getTripleTrendSignal(prices) {
+    if (prices.length < TP_CFG.SMA_SLOW) return { direction: "WAIT", strength: 0 };
+    
+    const fastSMA = calculateSMA(prices, TP_CFG.SMA_FAST);
+    const mediumSMA = calculateSMA(prices, TP_CFG.SMA_MEDIUM);
+    const slowSMA = calculateSMA(prices, TP_CFG.SMA_SLOW);
+
+    const isTripleBullish = fastSMA > mediumSMA && mediumSMA > slowSMA;
+    const isTripleBearish = fastSMA < mediumSMA && mediumSMA < slowSMA;
+
+    const strength = Math.abs(fastSMA - slowSMA) / slowSMA;
+
+    if (isTripleBullish) {
+        return { direction: "UP", strength: strength };
+    } else if (isTripleBearish) {
+        return { direction: "DOWN", strength: strength };
+    } else {
+        return { direction: "WAIT", strength: 0 };
+    }
+}
+
+function getPullbackDrop(prices) {
+  const lookbackPrices = prices.slice(Math.max(0, prices.length - TP_CFG.PULLBACK_LOOKBACK));
+  if (lookbackPrices.length === 0) return 0;
+  const highRecent = Math.max(...lookbackPrices);
+  const currentPrice = lookbackPrices[lookbackPrices.length - 1];
+  const drop = (highRecent - currentPrice) / highRecent;
+  return { drop: drop, high: highRecent };
+}
+
+
+// Cette fonction DOIT accepter initialCapital en paramètre
+function runTrendPullbackBot_5m() {
+  // Les fonctions GAS (getLatestPrice, getPriceHistory, logAction) doivent être définies plus haut
+  // ou l'émulateur doit les simuler correctement.
+
+  const currentPrice = getLatestPrice();
+  if (!currentPrice || currentPrice === 0) return;
+
+  // IMPORTANT : L'état initial DOIT venir du moteur de l'émulateur (pas de tp_loadState ici)
+  // L'émulateur gère la réinitialisation à 20$
+
+  // Simule l'état (le moteur définit l'état initial à 20$ avant d'appeler cette fonction)
+  let state = {
+    usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
+    btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC")),
+    avg: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_AVG"))
+  };
+
+  const history = getPriceHistory(TP_CFG.SMA_SLOW);
+  if (history.length < TP_CFG.SMA_SLOW) return; 
+
+  const trend = getTripleTrendSignal(history);
+  const pullback = getPullbackDrop(history);
+
+  // --- 1. Gestion des positions existantes (SELL) ---
+  if (state.btc > 0) {
+    const profit = (currentPrice - state.avg) / state.avg;
+    
+    // TAKE PROFIT
+    if (profit >= TP_CFG.TAKE_PROFIT) {
+      const btcSold = state.btc;
+      const usdtEarned = btcSold * currentPrice * (1 - TP_CFG.FEES_RATE);
+      state.usdt = usdtEarned;
+      state.btc = 0.0;
+      state.avg = 0.0;
+      const note = `TAKE PROFIT +${(TP_CFG.TAKE_PROFIT * 100).toFixed(1)}%`;
+      logAction("SELL", currentPrice, btcSold, usdtEarned, note);
+      tp_saveState(state);
+      return;
+    }
+    
+    // STOP LOSS
+    if (profit <= -TP_CFG.STOP_LOSS) {
+      const btcSold = state.btc;
+      const usdtEarned = btcSold * currentPrice * (1 - TP_CFG.FEES_RATE);
+      state.usdt = usdtEarned;
+      state.btc = 0.0;
+      state.avg = 0.0;
+      const note = `STOP LOSS ${(-TP_CFG.STOP_LOSS * 100).toFixed(1)}%`;
+      logAction("SELL", currentPrice, btcSold, usdtEarned, note);
+      tp_saveState(state);
+      return;
+    }
+  }
+
+  // --- 2. Recherche d'une opportunité (BUY) ---
+  if (state.btc === 0 && 
+      trend.direction === "UP" && 
+      trend.strength >= TP_CFG.TREND_STRENGTH_MIN) {
+    
+    const drop = pullback.drop;
+    if (drop >= TP_CFG.PULLBACK_MIN && drop <= TP_CFG.PULLBACK_MAX) {
+      
+      let invest = Math.max(TP_CFG.MIN_ORDER_USDT, state.usdt * TP_CFG.USE_PERCENT_CAPITAL);
+      if (invest > state.usdt) invest = state.usdt; 
+      if (invest < TP_CFG.MIN_ORDER_USDT) return;
+
+      const usdtUsed = invest;
+      const btcBought = (usdtUsed / currentPrice) * (1 - TP_CFG.FEES_RATE);
+      
+      state.usdt -= usdtUsed;
+      state.btc += btcBought;
+      state.avg = currentPrice; 
+      
+      const note = `BUY TripleFilter (repli ${(drop * 100).toFixed(2)}% sous high récent)`;
+      logAction("BUY", currentPrice, btcBought, usdtUsed, note);
+      tp_saveState(state);
+      return;
+    }
+  }
+}
+
+function createTrendPullbackTrigger5m() {
+  // code non nécessaire pour l'émulation
+}
+</textarea>
     </div>
 
     <div class="main-actions">
@@ -166,14 +326,14 @@ function runSim() {
     const emulatorCode = `
         let _idx = 0;
         let _prices = pricesArray;
-        // CORRECTION DE L'ERREUR toFixed() : on initialise les soldes en FLOTTANT
+        // CORRECTION MAJEURE: Force la réinitialisation de la mémoire TP_USDT à initialCapital
+        // pour corriger le bug de persistance du solde faible.
         let _mem = { 'TP_USDT': initialCapital, 'TP_BTC': 0.0, 'TP_AVG': 0.0 };
         let _logs = [];
 
         const PropertiesService = {
             getScriptProperties: () => ({
                 getProperty: (k) => _mem[k],
-                // CORRECTION ICI : Conversion en FLOTTANT lors de la lecture pour éviter l'erreur toFixed()
                 setProperty: (k, v) => _mem[k] = parseFloat(v), 
                 deleteProperty: (k) => delete _mem[k]
             })
@@ -222,6 +382,7 @@ function runSim() {
 
     try {
         const vm = new Function('pricesArray', 'initialCapital', emulatorCode);
+        // Utilise startCap comme capital initial
         const result = vm(btcData, startCap);
         
         const pnl = result.total - startCap;
@@ -231,7 +392,6 @@ function runSim() {
 
         result.logs.forEach(l => {
             const css = l.action === "BUY" ? "log-buy" : "log-sell";
-            // L'erreur ici était dans l'émulateur, pas votre script. La conversion est faite par le moteur.
             logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
         });
     } catch(e) {
