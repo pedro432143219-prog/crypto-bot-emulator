@@ -16,6 +16,9 @@
         .slot-btn { background: #0f3460; border: 1px solid #533483; color: #aaa; padding: 5px 10px; cursor: pointer; border-radius: 5px; font-size: 0.8rem; }
         .slot-btn.active { background: #f0a500; color: #000; font-weight: bold; border-color: #f0a500; }
         .action-btn { background: #2196f3; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
+        
+        /* Nouveau bouton Effacer */
+        .btn-clear { background: #ff4d4d; color: white; }
 
         /* Inputs */
         .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
@@ -25,7 +28,7 @@
         
         /* Zone de code (Noir) */
         .editor-panel { margin-bottom: 15px; }
-        .editor-header { color: #f0a500; font-size: 0.8rem; margin-bottom: 5px; }
+        .editor-header { color: #f0a500; font-size: 0.8rem; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
         textarea#strategyScript {
             width: 100%; height: 250px; /* Moins haut pour mobile */
             background: #080808; color: #d4d4d4; border: 1px solid #333;
@@ -70,7 +73,10 @@
     </div>
 
     <div class="editor-panel">
-        <div class="editor-header">👇 Colle ton script ICI (Zone noire) :</div>
+        <div class="editor-header">
+            <span>👇 Colle ton script ICI (Zone noire) :</span>
+            <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
+        </div>
         <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
     </div>
 
@@ -106,8 +112,12 @@ function loadSlotConfig(num) {
         document.getElementById('strategyScript').value = config.script;
     }
 }
+// NOUVELLE FONCTION : EFFACER LE SCRIPT
+function clearScript() {
+    document.getElementById('strategyScript').value = '';
+}
 
-// === MODIFICATION ICI : CHARGEMENT 2000 BOUGIES ===
+// === CHARGEMENT DES DONNÉES BINANCE ===
 async function loadDataBinance() {
     const status = document.getElementById('status');
     status.innerText = "Chargement (1/2)...";
@@ -156,13 +166,15 @@ function runSim() {
     const emulatorCode = `
         let _idx = 0;
         let _prices = pricesArray;
-        let _mem = { 'TP_USDT': initialCapital, 'TP_BTC': 0, 'TP_AVG': 0 };
+        // CORRECTION DE L'ERREUR toFixed() : on initialise les soldes en FLOTTANT
+        let _mem = { 'TP_USDT': initialCapital, 'TP_BTC': 0.0, 'TP_AVG': 0.0 };
         let _logs = [];
 
         const PropertiesService = {
             getScriptProperties: () => ({
                 getProperty: (k) => _mem[k],
-                setProperty: (k, v) => _mem[k] = v,
+                // CORRECTION ICI : Conversion en FLOTTANT lors de la lecture pour éviter l'erreur toFixed()
+                setProperty: (k, v) => _mem[k] = parseFloat(v), 
                 deleteProperty: (k) => delete _mem[k]
             })
         };
@@ -219,7 +231,8 @@ function runSim() {
 
         result.logs.forEach(l => {
             const css = l.action === "BUY" ? "log-buy" : "log-sell";
-            logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${l.usdt.toFixed(2)} | ${l.note}</div>`;
+            // L'erreur ici était dans l'émulateur, pas votre script. La conversion est faite par le moteur.
+            logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
         });
     } catch(e) {
         alert("Erreur dans VOTRE script (zone noire) : " + e.message);
