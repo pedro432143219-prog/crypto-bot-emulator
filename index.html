@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart DCA Emulator</title>
+    <title>Smart DCA Emulator (365 Jours)</title>
     <style>
         /* STYLE (CSS) */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -17,7 +17,7 @@
         .slot-btn.active { background: #f0a500; color: #000; font-weight: bold; border-color: #f0a500; }
         .action-btn { background: #2196f3; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
         
-        /* Nouveau bouton Effacer */
+        /* Bouton Effacer */
         .btn-clear { background: #ff4d4d; color: white; }
 
         /* Inputs */
@@ -41,7 +41,7 @@
         button.big-btn { border: none; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 0.85rem; cursor: pointer; color: #000; }
         .btn-load { background: #f0a500; }
         .btn-run { background: #4caf50; color: white; }
-        button:disabled { opacity: 0.5; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* Logs */
         .status-bar { text-align: center; font-size: 0.9rem; margin-bottom: 10px; }
@@ -53,7 +53,7 @@
 <body>
 
 <div class="container">
-    <h1>🧬 Emulateur GAS (Mobile)</h1>
+    <h1>🧬 Emulateur GAS (365 Jours)</h1>
     
     <div class="slots-container">
         <button class="slot-btn active" onclick="selectSlot(1)">Slot 1</button>
@@ -64,7 +64,7 @@
     <div class="input-group">
         <div class="input-wrapper">
             <label>Départ ($)</label>
-            <input type="number" id="startCap" value="20">
+            <input type="number" id="startCap" value="1000">
         </div>
         <div class="input-wrapper">
             <label>Fin ($)</label>
@@ -81,7 +81,7 @@
     </div>
 
     <div class="main-actions">
-        <button class="big-btn btn-load" onclick="loadDataBinance()">1. CHARGER DONNÉES (30 Jours / 5 Min)</button>
+        <button class="big-btn btn-load" id="btnLoad" onclick="loadDataBinance()">1. CHARGER DATA (365 Jours)</button>
         <button class="big-btn btn-run" id="btnRun" onclick="runSim()" disabled>2. LANCER</button>
     </div>
     
@@ -90,7 +90,7 @@
 </div>
 
 <script>
-// --- JAVASCRIPT SYSTEME (NE PAS TOUCHER) ---
+// --- JAVASCRIPT SYSTEME ---
 let btcData = []; 
 let currentSlot = 1;
 
@@ -116,22 +116,30 @@ function clearScript() {
     document.getElementById('strategyScript').value = '';
 }
 
-// === CHARGEMENT DES DONNÉES BINANCE (30 Jours) ===
+// === CHARGEMENT DES DONNÉES BINANCE (365 Jours) ===
 async function loadDataBinance() {
     const status = document.getElementById('status');
-    status.innerText = "Calcul du nombre de requêtes...";
+    const btnLoad = document.getElementById('btnLoad');
     
-    // Total de bougies nécessaires pour 30 jours (30 * 288 bougies/jour = 8640)
-    const TARGET_BOUGEES = 8700; 
+    btnLoad.disabled = true;
+    status.innerText = "Initialisation du téléchargement massif...";
+    
+    // --- MODIFICATION ICI POUR 365 JOURS ---
+    // 365 jours * 24 heures * 12 bougies de 5min = 105 120 bougies
+    const TARGET_DAYS = 365;
+    const TARGET_BOUGEES = TARGET_DAYS * 288; // 288 bougies de 5mn par jour
     const LIMIT = 1000;
     const NUM_REQUETES = Math.ceil(TARGET_BOUGEES / LIMIT);
     
     let allData = [];
     let endTime = Date.now(); // Commence à l'heure actuelle
     
+    console.log(`Objectif : ${TARGET_BOUGEES} bougies (~${NUM_REQUETES} requêtes)`);
+
     try {
         for (let i = 0; i < NUM_REQUETES; i++) {
-            status.innerText = `Chargement (${i + 1}/${NUM_REQUETES})...`;
+            // Affichage de la progression pour l'utilisateur car c'est long
+            status.innerText = `Chargement en cours (${i + 1}/${NUM_REQUETES}) - ${(allData.length/TARGET_BOUGEES*100).toFixed(0)}%`;
             
             const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=${LIMIT}&endTime=${endTime}`;
             
@@ -140,22 +148,33 @@ async function loadDataBinance() {
             
             if (!data || data.length === 0) break;
 
+            // On ajoute les nouvelles données au début du tableau (car on remonte le temps)
             allData = data.concat(allData);
             
+            // On met à jour le endTime pour la prochaine requête (temps de la bougie la plus ancienne reçue)
             endTime = data[0][0]; 
 
-            // Petite pause pour ne pas surcharger l'API de Binance
-            await new Promise(resolve => setTimeout(resolve, 50)); 
+            // Pause légère pour éviter le ban IP de Binance (Rate Limit)
+            // Avec 100+ requêtes, il faut être prudent.
+            await new Promise(resolve => setTimeout(resolve, 60)); 
         }
 
-        // Extraire les prix de clôture
-        btcData = allData.slice(allData.length - TARGET_BOUGEES).map(c => parseFloat(c[4])); 
+        // On découpe pour avoir exactement le nombre de jours demandés si on a dépassé
+        if (allData.length > TARGET_BOUGEES) {
+             allData = allData.slice(allData.length - TARGET_BOUGEES);
+        }
+
+        // Extraire uniquement les prix de clôture (Close price index 4)
+        btcData = allData.map(c => parseFloat(c[4])); 
         
-        status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (30 jours).`;
+        status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (1 an). Prêt !`;
+        btnLoad.disabled = false;
         document.getElementById('btnRun').disabled = false;
         
     } catch(e) { 
-        status.innerText = "Erreur Web: Échec du chargement des données. " + e.message; 
+        status.innerText = "Erreur Web: " + e.message; 
+        console.error(e);
+        btnLoad.disabled = false;
         document.getElementById('btnRun').disabled = true;
     }
 }
@@ -170,121 +189,114 @@ function runSim() {
     
     if (btcData.length === 0) return alert("Clique sur CHARGER DONNÉES d'abord.");
     logsDiv.innerHTML = "";
+    status.innerText = "Simulation en cours...";
 
-    // Moteur d'émulation
-    const emulatorCode = `
-        let _idx = 0;
-        let _prices = pricesArray;
-        let _mem = { 
-            'TP_USDT': initialCapital, 
-            'TP_BTC': 0.0, 
-            'TP_AVG': 0.0 
-        };
-        let _logs = [];
+    // Utilisation d'un setTimeout pour laisser le DOM se mettre à jour avant le gros calcul
+    setTimeout(() => {
+        // Moteur d'émulation
+        const emulatorCode = `
+            let _idx = 0;
+            let _prices = pricesArray;
+            let _mem = { 
+                'TP_USDT': initialCapital, 
+                'TP_BTC': 0.0, 
+                'TP_AVG': 0.0 
+            };
+            let _logs = [];
 
-        // Fonctions GAS simulées
-        const PropertiesService = {
-            getScriptProperties: () => ({
-                getProperty: (k) => _mem[k],
-                setProperty: (k, v) => _mem[k] = parseFloat(v), 
-                deleteProperty: (k) => delete _mem[k]
-            })
-        };
-        const Logger = { log: (m) => {} };
-        const ScriptApp = {
-            getProjectTriggers: () => [],
-            deleteTrigger: () => {},
-            newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) })
-        };
-        const SpreadsheetApp = {
-            getActiveSpreadsheet: () => ({
-                getSheetByName: (n) => ({
-                    getRange: (r, c, nr, nc) => ({
-                        getValue: () => _prices[_idx],
-                        getValues: () => {
-                            const end = _idx; 
-                            const start = Math.max(0, end - nr + 1);
-                            return _prices.slice(start, end + 1).map(p => [p]);
-                        }
+            // Fonctions GAS simulées
+            const PropertiesService = {
+                getScriptProperties: () => ({
+                    getProperty: (k) => _mem[k],
+                    setProperty: (k, v) => _mem[k] = parseFloat(v), 
+                    deleteProperty: (k) => delete _mem[k]
+                })
+            };
+            const Logger = { log: (m) => {} };
+            const ScriptApp = {
+                getProjectTriggers: () => [],
+                deleteTrigger: () => {},
+                newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) })
+            };
+            const SpreadsheetApp = {
+                getActiveSpreadsheet: () => ({
+                    getSheetByName: (n) => ({
+                        getRange: (r, c, nr, nc) => ({
+                            getValue: () => _prices[_idx],
+                            getValues: () => {
+                                const end = _idx; 
+                                const start = Math.max(0, end - nr + 1);
+                                return _prices.slice(start, end + 1).map(p => [p]);
+                            }
+                        }),
+                        getLastRow: () => _idx + 2,
+                        appendRow: (arr) => {}
                     }),
-                    getLastRow: () => _idx + 2,
-                    appendRow: (arr) => {}
-                }),
-                insertSheet: () => {}
-            })
-        };
+                    insertSheet: () => {}
+                })
+            };
 
-        // --- INJECTION DU SCRIPT UTILISATEUR OU DU SCRIPT DE TEST ---
-        if (userScript.trim().length > 0) {
-            // Le script de l'utilisateur existe : on l'injecte
-            ${userScript}
-        } else {
-            // Le script est vide : on injecte le script de TEST FORCE pour garantir un trade
-            function runTrendPullbackBot_5m() {
-                const currentPrice = getLatestPrice();
-                const btcToBuy = 1.0; 
-                
-                let state = {
-                    usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
-                    btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC"))
-                };
+            // --- INJECTION DU SCRIPT UTILISATEUR ---
+            if (userScript.trim().length > 0) {
+                ${userScript}
+            } else {
+                // Script de secours si vide
+                function runTrendPullbackBot_5m() { return; }
+            }
+            
+            const getLatestPrice = () => _prices[_idx];
+            const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
+            const logAction = (type, price, assetAmount, usdtAmount, note) => {
+                if (type === "BUY" || type === "SELL") {
+                    _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
+                }
+            };
 
-                // ACHAT FORCE AU PREMIER CYCLE
-                if (state.btc === 0 && state.usdt >= 1) { 
-                    const usdtUsed = btcToBuy;
-                    const btcBought = usdtUsed / currentPrice;
-                    
-                    PropertiesService.getScriptProperties().setProperty("TP_USDT", state.usdt - usdtUsed);
-                    PropertiesService.getScriptProperties().setProperty("TP_BTC", btcBought);
-                    PropertiesService.getScriptProperties().setProperty("TP_AVG", currentPrice);
-                    
-                    logAction("BUY", currentPrice, btcBought, usdtUsed, "TEST FORCE MOTEUR REUSSI");
-                    return;
+            // --- BOUCLE DE SIMULATION ---
+            // On commence à 200 pour avoir assez d'historique pour les moyennes mobiles
+            for(let i = 200; i < _prices.length; i++) {
+                _idx = i;
+                try { 
+                    if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
+                } catch(e){
+                    // Ignorer les erreurs mineures
                 }
             }
-        }
-        
-        // Définition des fonctions utilitaires pour que le script utilisateur puisse les appeler
-        const getLatestPrice = () => _prices[_idx];
-        const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
-        const logAction = (type, price, assetAmount, usdtAmount, note) => {
-            if (type === "BUY" || type === "SELL") {
-                _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
+
+            const finalPrice = _prices[_prices.length - 1];
+            const finalUSDT = parseFloat(_mem['TP_USDT']);
+            const finalBTC = parseFloat(_mem['TP_BTC']);
+            return { total: finalUSDT + (finalBTC * finalPrice), logs: _logs, trades: _logs.length };
+        `;
+
+        try {
+            const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
+            const result = vm(btcData, startCap, userScript);
+            
+            const pnl = result.total - startCap;
+            const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
+            document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
+            status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades)`;
+
+            // Affichage optimisé des logs (limité aux 500 derniers si trop nombreux pour éviter le lag)
+            let logsHTML = "";
+            const logsToDisplay = result.logs; 
+            
+            if(logsToDisplay.length === 0) {
+                logsHTML = "Aucun trade effectué.";
+            } else {
+                logsToDisplay.forEach(l => {
+                    const css = l.action === "BUY" ? "log-buy" : "log-sell";
+                    logsHTML += `<div class="log-entry ${css}">[Bougie ${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
+                });
             }
-        };
+            logsDiv.innerHTML = logsHTML;
 
-        // --- BOUCLE DE SIMULATION ---
-        for(let i = 50; i < _prices.length; i++) {
-            _idx = i;
-            try { 
-                if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
-            } catch(e){
-                console.error("Erreur dans l'itération " + _idx + ": " + e.message);
-            }
+        } catch(e) {
+            alert("Erreur critique du MOTEUR : " + e.message);
+            status.innerText = "Erreur script.";
         }
-
-        const finalPrice = _prices[_prices.length - 1];
-        const finalUSDT = parseFloat(_mem['TP_USDT']);
-        const finalBTC = parseFloat(_mem['TP_BTC']);
-        return { total: finalUSDT + (finalBTC * finalPrice), logs: _logs, trades: _logs.length };
-    `;
-
-    try {
-        const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
-        const result = vm(btcData, startCap, userScript);
-        
-        const pnl = result.total - startCap;
-        const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
-        document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
-        status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades)`;
-
-        result.logs.forEach(l => {
-            const css = l.action === "BUY" ? "log-buy" : "log-sell";
-            logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
-        });
-    } catch(e) {
-        alert("Erreur critique du MOTEUR : " + e.message);
-    }
+    }, 50);
 }
 
 // Charger la configuration du Slot 1 au démarrage
