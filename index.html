@@ -81,7 +81,7 @@
     </div>
 
     <div class="main-actions">
-        <button class="big-btn btn-load" onclick="loadDataBinance()">1. CHARGER DONNÉES (7 Jours / 5 Min)</button>
+        <button class="big-btn btn-load" onclick="loadDataBinance()">1. CHARGER DONNÉES (30 Jours / 5 Min)</button>
         <button class="big-btn btn-run" id="btnRun" onclick="runSim()" disabled>2. LANCER</button>
     </div>
     
@@ -116,33 +116,44 @@ function clearScript() {
     document.getElementById('strategyScript').value = '';
 }
 
-// === CHARGEMENT DES DONNÉES BINANCE ===
+// === CHARGEMENT DES DONNÉES BINANCE (30 Jours) ===
 async function loadDataBinance() {
     const status = document.getElementById('status');
-    status.innerText = "Chargement (1/2)...";
+    status.innerText = "Calcul du nombre de requêtes...";
+    
+    // Total de bougies nécessaires pour 30 jours (30 * 288 bougies/jour = 8640)
+    const TARGET_BOUGEES = 8700; 
+    const LIMIT = 1000;
+    const NUM_REQUETES = Math.ceil(TARGET_BOUGEES / LIMIT);
+    
+    let allData = [];
+    let endTime = Date.now(); // Commence à l'heure actuelle
+    
     try {
-        // 1. Récupérer les 1000 bougies les plus récentes
-        const url1 = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=1000";
-        const response1 = await fetch(url1);
-        const d1 = await response1.json();
-        
-        const oldestTime = d1[0][0]; 
+        for (let i = 0; i < NUM_REQUETES; i++) {
+            status.innerText = `Chargement (${i + 1}/${NUM_REQUETES})...`;
+            
+            const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=${LIMIT}&endTime=${endTime}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (!data || data.length === 0) break;
 
-        status.innerText = "Chargement (2/2)...";
-        
-        // 2. Récupérer les 1000 bougies précédentes
-        const url2 = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=1000&endTime=${oldestTime}`;
-        const response2 = await fetch(url2);
-        const d2 = await response2.json();
-        
-        // Concaténer (d2 d'abord pour avoir la chronologie correcte)
-        const full = d2.concat(d1);
-        
+            allData = data.concat(allData);
+            
+            endTime = data[0][0]; 
+
+            // Petite pause pour ne pas surcharger l'API de Binance
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+        }
+
         // Extraire les prix de clôture
-        btcData = full.map(c => parseFloat(c[4])); 
+        btcData = allData.slice(allData.length - TARGET_BOUGEES).map(c => parseFloat(c[4])); 
         
-        status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (7 jours).`;
+        status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (30 jours).`;
         document.getElementById('btnRun').disabled = false;
+        
     } catch(e) { 
         status.innerText = "Erreur Web: Échec du chargement des données. " + e.message; 
         document.getElementById('btnRun').disabled = true;
@@ -157,7 +168,7 @@ function runSim() {
     const logsDiv = document.getElementById('logs');
     const status = document.getElementById('status');
     
-    if (btcData.length === 0) return alert("Clique sur CHARGER DATA d'abord.");
+    if (btcData.length === 0) return alert("Clique sur CHARGER DONNÉES d'abord.");
     logsDiv.innerHTML = "";
 
     // Moteur d'émulation
@@ -211,7 +222,7 @@ function runSim() {
             // Le script est vide : on injecte le script de TEST FORCE pour garantir un trade
             function runTrendPullbackBot_5m() {
                 const currentPrice = getLatestPrice();
-                const btcToBuy = 1.0; // Acheter 1.0 USDT pour le test
+                const btcToBuy = 1.0; 
                 
                 let state = {
                     usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
@@ -275,6 +286,9 @@ function runSim() {
         alert("Erreur critique du MOTEUR : " + e.message);
     }
 }
+
+// Charger la configuration du Slot 1 au démarrage
+selectSlot(1);
 </script>
 </body>
 </html>
