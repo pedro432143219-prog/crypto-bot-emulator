@@ -116,8 +116,7 @@ function clearScript() {
     document.getElementById('strategyScript').value = '';
 }
 
-// === CHARGEMENT DES DONNÉES BINANCE (7 Jours @ 1 Minute) ===
-// CODE CORRIGÉ POUR L'INDEXATION TEMPORELLE
+// === CHARGEMENT DES DONNÉES BINANCE (7 Jours @ 1 Minute) - UTILISE ENDTIME ===
 async function loadDataBinance() {
     const status = document.getElementById('status');
     status.innerText = "Calcul du nombre de requêtes...";
@@ -128,35 +127,32 @@ async function loadDataBinance() {
     const NUM_REQUETES = Math.ceil(TARGET_BOUGEES / LIMIT);
     
     let allData = [];
-    // Début il y a 7 jours (en millisecondes)
-    let startTime = Date.now() - (7 * 24 * 60 * 60 * 1000); 
+    let endTime = Date.now(); // Commence à l'heure actuelle
     
     try {
         for (let i = 0; i < NUM_REQUETES; i++) {
-            status.innerText = `Chargement 1-Minute (${i + 1}/${NUM_REQUETES})...`;
+            status.innerText = `Chargement 1-Minutes (${i + 1}/${NUM_REQUETES})...`;
             
-            // On utilise startTime et on avance le temps à chaque requête
-            const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${LIMIT}&startTime=${startTime}`;
+            // Intervalle '1m' et utilise endTime (méthode stable)
+            const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${LIMIT}&endTime=${endTime}`;
             
             const response = await fetch(url);
             const data = await response.json();
             
             if (!data || data.length === 0) break;
 
-            allData = allData.concat(data);
+            // Ajoute les données au DÉBUT de l'array
+            allData = data.concat(allData); 
             
-            // On avance le temps de début après la dernière bougie récupérée + 1 milliseconde
-            startTime = data[data.length - 1][0] + 1; 
+            // La nouvelle heure de fin est l'heure de début de la première bougie récupérée
+            endTime = data[0][0]; 
 
-            // Pause pour éviter de surcharger Binance (sinon ça peut planter)
+            // Pause pour éviter de surcharger Binance
             await new Promise(resolve => setTimeout(resolve, 50)); 
         }
 
-        // Extraire les prix de clôture
-        btcData = allData.map(c => parseFloat(c[4])); 
-        if (btcData.length > TARGET_BOUGEES) {
-             btcData = btcData.slice(btcData.length - TARGET_BOUGEES);
-        }
+        // Extraire les prix de clôture (et couper si on a trop)
+        btcData = allData.slice(allData.length - TARGET_BOUGEES).map(c => parseFloat(c[4])); 
         
         status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (7 jours @ 1m).`;
         document.getElementById('btnRun').disabled = false;
@@ -225,29 +221,107 @@ function runSim() {
             // Le script de l'utilisateur existe : on l'injecte
             ${userScript}
         } else {
-            // Le script est vide : on injecte le script de TEST FORCE pour garantir un trade
+            // SCRIPT DE TEST DE BASE (Croisement SMA Simple)
+            const FEES_RATE = 0.0009; 
+            const TRADE_AMOUNT_USDT = 4.0; 
+
+            const TP_CFG = {
+                MAX_CAPITAL: 50.0,
+                TAKE_PROFIT_PERCENT: 0.006,  
+                STOP_LOSS_PERCENT: 0.007,    
+                SMA_FAST: 10,
+                SMA_MEDIUM: 30,
+                SMA_SLOW: 50,
+                TREND_STRENGTH_MIN: 0.0001, 
+                PULLBACK_CANDLES_COUNT: 20,  
+                PULLBACK_PERCENT_DROP: 0.004
+            };
+
+            function calculateSMA(data, period) {
+                if (data.length < period) return null;
+                let sum = 0;
+                for (let i = data.length - period; i < data.length; i++) {
+                    sum += data[i];
+                }
+                return sum / period;
+            }
+
+            const getLatestPrice = () => _prices[_idx];
+            const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
+            
+            function tp_loadState() {
+                const props = PropertiesService.getScriptProperties();
+                return {
+                    usdt: parseFloat(props.getProperty("TP_USDT")) || TP_CFG.MAX_CAPITAL,
+                    btc: parseFloat(props.getProperty("TP_BTC")) || 0.0,
+                    avg: parseFloat(props.getProperty("TP_AVG")) || 0.0
+                };
+            }
+
+            function tp_saveState(state) {
+                const props = PropertiesService.getScriptProperties();
+                props.setProperty("TP_USDT", state.usdt);
+                props.setProperty("TP_BTC", state.btc);
+                props.setProperty("TP_AVG", state.avg);
+            }
+
             function runTrendPullbackBot_5m() {
                 const currentPrice = getLatestPrice();
-                const btcToBuy = 1.0; 
-                
-                let state = {
-                    usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
-                    btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC"))
-                };
+                let state = tp_loadState();
 
-                // ACHAT FORCE AU PREMIER CYCLE
-                if (state.btc === 0 && state.usdt >= 1) { 
-                    const usdtUsed = btcToBuy;
-                    const btcBought = usdtUsed / currentPrice;
+                if (state.btc > 0) {
+                    const currentGain = (currentPrice - state.avg) / state.avg;
+                    if (currentGain >= TP_CFG.TAKE_PROFIT_PERCENT) {
+                        const usdtReceived = state.btc * currentPrice * (1 - FEES_RATE);
+                        state.usdt += usdtReceived;
+                        state.btc = 0.0;
+                        state.avg = 0.0;
+                        logAction("SELL", currentPrice, usdtReceived / currentPrice, usdtReceived, "TAKE PROFIT");
+                        tp_saveState(state);
+                        return;
+                    }
+                    if (currentGain <= -TP_CFG.STOP_LOSS_PERCENT) {
+                        const usdtReceived = state.btc * currentPrice * (1 - FEES_RATE);
+                        state.usdt += usdtReceived;
+                        state.btc = 0.0;
+                        state.avg = 0.0;
+                        logAction("SELL", currentPrice, usdtReceived / currentPrice, usdtReceived, "STOP LOSS");
+                        tp_saveState(state);
+                        return;
+                    }
+                    return; 
+                }
+
+                if (state.usdt < TRADE_AMOUNT_USDT) return; 
+
+                const priceHistory = getPriceHistory(TP_CFG.SMA_SLOW);
+                if (!priceHistory || priceHistory.length < TP_CFG.SMA_SLOW) return;
+
+                const smaFast = calculateSMA(priceHistory, TP_CFG.SMA_FAST);
+                const smaSlow = calculateSMA(priceHistory, TP_CFG.SMA_SLOW);
+
+                if (!smaFast || !smaSlow) return;
+
+                // Croisement basique (Fast > Slow)
+                const isBullish = (smaFast > smaSlow);
+                
+                const trendStrength = (smaFast - smaSlow) / smaSlow;
+                const isStrongTrend = trendStrength >= TP_CFG.TREND_STRENGTH_MIN;
+
+
+                if (isBullish && isStrongTrend) {
+                    const usdtUsed = TRADE_AMOUNT_USDT;
+                    const btcBought = usdtUsed / currentPrice * (1 - FEES_RATE);
                     
-                    PropertiesService.getScriptProperties().setProperty("TP_USDT", state.usdt - usdtUsed);
-                    PropertiesService.getScriptProperties().setProperty("TP_BTC", btcBought);
-                    PropertiesService.getScriptProperties().setProperty("TP_AVG", currentPrice);
+                    state.usdt -= usdtUsed;
+                    state.btc += btcBought;
+                    state.avg = currentPrice;
                     
-                    logAction("BUY", currentPrice, btcBought, usdtUsed, "TEST FORCE MOTEUR REUSSI");
-                    return;
+                    logAction("BUY", currentPrice, btcBought, usdtUsed, "BUY Croisement Simple (TEST)");
+                    tp_saveState(state);
                 }
             }
+            // FIN DU SCRIPT DE TEST DE BASE
         }
         
         // Définition des fonctions utilitaires pour que le script utilisateur puisse les appeler
