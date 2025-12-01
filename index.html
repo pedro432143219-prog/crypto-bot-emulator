@@ -1,3 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart DCA Emulator</title>
+    <style>
+        /* STYLE (CSS) */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 10px; }
+        .container { max-width: 100%; background: #16213e; border-radius: 10px; padding: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        h1 { text-align: center; color: #f0a500; font-size: 1.2rem; margin-bottom: 15px; }
+        
+        /* Boutons Slots */
+        .slots-container { display: flex; gap: 5px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap; }
+        .slot-btn { background: #0f3460; border: 1px solid #533483; color: #aaa; padding: 5px 10px; cursor: pointer; border-radius: 5px; font-size: 0.8rem; }
+        .slot-btn.active { background: #f0a500; color: #000; font-weight: bold; border-color: #f0a500; }
+        .action-btn { background: #2196f3; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
+        
+        /* Nouveau bouton Effacer */
+        .btn-clear { background: #ff4d4d; color: white; }
+
+        /* Inputs */
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .input-wrapper { flex: 1; }
+        label { display: block; margin-bottom: 3px; color: #888; font-size: 0.75rem; }
+        input { width: 100%; padding: 8px; background: #0f3460; border: 1px solid #533483; color: white; border-radius: 5px; }
+        
+        /* Zone de code (Noir) */
+        .editor-panel { margin-bottom: 15px; }
+        .editor-header { color: #f0a500; font-size: 0.8rem; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        textarea#strategyScript {
+            width: 100%; height: 250px; 
+            background: #080808; color: #d4d4d4; border: 1px solid #333;
+            border-radius: 5px; padding: 10px; font-family: monospace; font-size: 11px;
+            white-space: pre; overflow: auto;
+        }
+
+        /* Gros boutons d'action */
+        .main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        button.big-btn { border: none; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 0.85rem; cursor: pointer; color: #000; }
+        .btn-load { background: #f0a500; }
+        .btn-run { background: #4caf50; color: white; }
+        button:disabled { opacity: 0.5; }
+
+        /* Logs */
+        .status-bar { text-align: center; font-size: 0.9rem; margin-bottom: 10px; }
+        .logs-panel { background: #000; padding: 10px; border-radius: 5px; height: 200px; overflow-y: scroll; font-family: monospace; font-size: 10px; border: 1px solid #333; }
+        .log-buy { color: #00ff00; }
+        .log-sell { color: #ff0055; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🧬 Emulateur GAS (Mobile)</h1>
+    
+    <div class="slots-container">
+        <button class="slot-btn active" onclick="selectSlot(1)">Slot 1</button>
+        <button class="slot-btn" onclick="selectSlot(2)">Slot 2</button>
+        <button class="action-btn" onclick="saveCurrentConfig()">💾 SAVE</button>
+    </div>
+
+    <div class="input-group">
+        <div class="input-wrapper">
+            <label>Départ ($)</label>
+            <input type="number" id="startCap" value="20">
+        </div>
+        <div class="input-wrapper">
+            <label>Fin ($)</label>
+            <input type="text" id="finalCapDisplay" value="-" readonly>
+        </div>
+    </div>
+
+    <div class="editor-panel">
+        <div class="editor-header">
+            <span>👇 Colle ton script ICI (Zone noire) :</span>
+            <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
+        </div>
+        <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
+    </div>
+
+    <div class="main-actions">
+        <button class="big-btn btn-load" onclick="loadDataBinance()">1. CHARGER DONNÉES (7 Jours / 5 Min)</button>
+        <button class="big-btn btn-run" id="btnRun" onclick="runSim()" disabled>2. LANCER</button>
+    </div>
+    
+    <div id="status" class="status-bar">En attente...</div>
+    <div id="logs" class="logs-panel">Logs...</div>
+</div>
+
 <script>
 // --- JAVASCRIPT SYSTEME (NE PAS TOUCHER) ---
 let btcData = []; 
@@ -117,7 +208,7 @@ function runSim() {
             // Le script de l'utilisateur existe : on l'injecte
             ${userScript}
         } else {
-            // Le script est vide : on injecte le script de TEST FORCE
+            // Le script est vide : on injecte le script de TEST FORCE pour garantir un trade
             function runTrendPullbackBot_5m() {
                 const currentPrice = getLatestPrice();
                 const btcToBuy = 1.0; // Acheter 1.0 USDT pour le test
@@ -185,3 +276,5 @@ function runSim() {
     }
 }
 </script>
+</body>
+</html>
