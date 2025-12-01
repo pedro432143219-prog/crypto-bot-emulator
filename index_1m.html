@@ -17,6 +17,7 @@
         .slot-btn.active { background: #f0a500; color: #000; font-weight: bold; border-color: #f0a500; }
         .action-btn { background: #2196f3; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
         
+        /* Nouveau bouton Effacer */
         .btn-clear { background: #ff4d4d; color: white; }
 
         /* Inputs */
@@ -73,7 +74,7 @@
 
     <div class="editor-panel">
         <div class="editor-header">
-            <span>👇 Colle ton script ICI (Zone noire) :</span>
+            <span>👇 Colle ton script ICI (Frais Revolut X 0.09% Taker Inclus) :</span>
             <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
         </div>
         <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
@@ -89,7 +90,7 @@
 </div>
 
 <script>
-// --- JAVASCRIPT SYSTEME (MODIFIÉ POUR 1M) ---
+// --- JAVASCRIPT SYSTEME (NE PAS TOUCHER) ---
 let btcData = []; 
 let currentSlot = 1;
 
@@ -100,12 +101,11 @@ function selectSlot(num) {
 }
 function saveCurrentConfig() {
     const config = { capital: document.getElementById('startCap').value, script: document.getElementById('strategyScript').value };
-    // J'ajoute "_1m_" dans la clé pour ne pas écraser l'autre script si ouverts au même endroit
-    localStorage.setItem('gas_sim_slot_1m_' + currentSlot, JSON.stringify(config));
+    localStorage.setItem('gas_sim_slot_' + currentSlot, JSON.stringify(config));
     alert("Configuration sauvegardée !");
 }
 function loadSlotConfig(num) {
-    const saved = localStorage.getItem('gas_sim_slot_1m_' + num);
+    const saved = localStorage.getItem('gas_sim_slot_' + num);
     if (saved) {
         const config = JSON.parse(saved);
         document.getElementById('startCap').value = config.capital;
@@ -127,7 +127,7 @@ async function loadDataBinance() {
     const NUM_REQUETES = Math.ceil(TARGET_BOUGEES / LIMIT);
     
     let allData = [];
-    let endTime = Date.now(); 
+    let endTime = Date.now(); // Commence à l'heure actuelle
     
     try {
         for (let i = 0; i < NUM_REQUETES; i++) {
@@ -159,6 +159,7 @@ async function loadDataBinance() {
         document.getElementById('btnRun').disabled = true;
     }
 }
+// =======================================================
 
 
 function runSim() {
@@ -169,118 +170,155 @@ function runSim() {
     
     if (btcData.length === 0) return alert("Clique sur CHARGER DONNÉES d'abord.");
     logsDiv.innerHTML = "";
+    status.innerText = "Simulation en cours...";
 
-    // Moteur d'émulation
-    const emulatorCode = `
-        let _idx = 0;
-        let _prices = pricesArray;
-        let _mem = { 
-            'TP_USDT': initialCapital, 
-            'TP_BTC': 0.0, 
-            'TP_AVG': 0.0 
-        };
-        let _logs = [];
+    setTimeout(() => {
+        // Moteur d'émulation
+        const emulatorCode = `
+            let _idx = 0;
+            let _prices = pricesArray;
+            let _mem = { 
+                'TP_USDT': initialCapital, 
+                'TP_BTC': 0.0, 
+                'TP_AVG': 0.0 
+            };
+            let _logs = [];
 
-        // Fonctions GAS simulées
-        const PropertiesService = {
-            getScriptProperties: () => ({
-                getProperty: (k) => _mem[k],
-                setProperty: (k, v) => _mem[k] = parseFloat(v), 
-                deleteProperty: (k) => delete _mem[k]
-            })
-        };
-        const Logger = { log: (m) => {} };
-        const ScriptApp = {
-            getProjectTriggers: () => [],
-            deleteTrigger: () => {},
-            newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) })
-        };
-        const SpreadsheetApp = {
-            getActiveSpreadsheet: () => ({
-                getSheetByName: (n) => ({
-                    getRange: (r, c, nr, nc) => ({
-                        getValue: () => _prices[_idx],
-                        getValues: () => {
-                            const end = _idx; 
-                            const start = Math.max(0, end - nr + 1);
-                            return _prices.slice(start, end + 1).map(p => [p]);
-                        }
+            // === CONSTANTE DES FRAIS DE REVOLUT X ===
+            const REVOLUT_TAKER_FEE = 0.0009; // 0.09%
+
+            // Fonctions GAS simulées
+            const PropertiesService = {
+                getScriptProperties: () => ({
+                    getProperty: (k) => _mem[k],
+                    setProperty: (k, v) => _mem[k] = parseFloat(v), 
+                    deleteProperty: (k) => delete _mem[k]
+                })
+            };
+            const Logger = { log: (m) => {} };
+            const ScriptApp = {
+                getProjectTriggers: () => [],
+                deleteTrigger: () => {},
+                newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) })
+            };
+            const SpreadsheetApp = {
+                getActiveSpreadsheet: () => ({
+                    getSheetByName: (n) => ({
+                        getRange: (r, c, nr, nc) => ({
+                            getValue: () => _prices[_idx],
+                            getValues: () => {
+                                const end = _idx; 
+                                const start = Math.max(0, end - nr + 1);
+                                return _prices.slice(start, end + 1).map(p => [p]);
+                            }
+                        }),
+                        getLastRow: () => _idx + 2,
+                        appendRow: (arr) => {}
                     }),
-                    getLastRow: () => _idx + 2,
-                    appendRow: (arr) => {}
-                }),
-                insertSheet: () => {}
-            })
-        };
+                    insertSheet: () => {}
+                })
+            };
 
-        // --- INJECTION DU SCRIPT UTILISATEUR ---
-        if (userScript.trim().length > 0) {
-            ${userScript}
-        } else {
-            // SCRIPT DE TEST PAR DÉFAUT (Pour vérifier que le 1m marche)
-            function runTrendPullbackBot_1m() {
-                const currentPrice = getLatestPrice();
-                const btcToBuy = 1.0; 
-                let state = {
-                    usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
-                    btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC"))
-                };
-                if (state.btc === 0 && state.usdt >= 1) { 
-                    const usdtUsed = btcToBuy;
-                    const btcBought = usdtUsed / currentPrice;
-                    PropertiesService.getScriptProperties().setProperty("TP_USDT", state.usdt - usdtUsed);
-                    PropertiesService.getScriptProperties().setProperty("TP_BTC", btcBought);
-                    PropertiesService.getScriptProperties().setProperty("TP_AVG", currentPrice);
-                    logAction("BUY", currentPrice, btcBought, usdtUsed, "TEST FORCE 1M REUSSI");
+            // --- INJECTION DU SCRIPT UTILISATEUR OU DU SCRIPT DE TEST ---
+            if (userScript.trim().length > 0) {
+                // Le script de l'utilisateur existe : on l'injecte
+                ${userScript}
+            } else {
+                // Le script est vide : on injecte le script de TEST FORCE pour garantir un trade
+                function runTrendPullbackBot_5m() {
+                    const currentPrice = getLatestPrice();
+                    const btcToBuy = 1.0; 
+                    
+                    let state = {
+                        usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
+                        btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC"))
+                    };
+
+                    // ACHAT FORCE AU PREMIER CYCLE
+                    if (_idx === 50 && state.btc === 0 && state.usdt >= 1) { 
+                        const usdtUsed = btcToBuy;
+                        const btcBought = usdtUsed / currentPrice;
+                        
+                        PropertiesService.getScriptProperties().setProperty("TP_USDT", state.usdt - usdtUsed);
+                        PropertiesService.getScriptProperties().setProperty("TP_BTC", btcBought);
+                        PropertiesService.getScriptProperties().setProperty("TP_AVG", currentPrice);
+                        
+                        logAction("BUY", currentPrice, btcBought, state.usdt - usdtUsed, "TEST FORCE MOTEUR (1er Trade)");
+                        return;
+                    }
                 }
             }
-        }
-        
-        const getLatestPrice = () => _prices[_idx];
-        const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
-        const logAction = (type, price, assetAmount, usdtAmount, note) => {
-            if (type === "BUY" || type === "SELL") {
-                _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
-            }
-        };
-
-        // --- BOUCLE DE SIMULATION (CORRIGÉE) ---
-        for(let i = 50; i < _prices.length; i++) {
-            _idx = i;
-            try { 
-                // C'est ici que je corrige le bug : je cherche les deux noms possibles !
-                if (typeof runTrendPullbackBot_1m === 'function') {
-                    runTrendPullbackBot_1m(); 
-                } else if (typeof runTrendPullbackBot_5m === 'function') {
-                    runTrendPullbackBot_5m();
+            
+            // Définition des fonctions utilitaires pour que le script utilisateur puisse les appeler
+            const getLatestPrice = () => _prices[_idx];
+            const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
+            
+            // === FONCTION LOGACTION MODIFIÉE POUR INCLURE LES FRAIS (0.09%) ===
+            const logAction = (type, price, assetAmount, usdtAmount, note) => {
+                if (type === "BUY" || type === "SELL") {
+                    
+                    let finalUSDT = usdtAmount;
+                    let feeAmount = 0;
+                    
+                    if (type === "BUY") {
+                        // Frais sur le montant acheté (USDT)
+                        const usdtUsed = assetAmount * price; // Montant théorique de USDT dépensé
+                        feeAmount = usdtUsed * REVOLUT_TAKER_FEE;
+                        
+                        // Déduction des frais de l'USDT restant
+                        finalUSDT -= feeAmount; 
+                        
+                        _mem['TP_USDT'] = finalUSDT;
+                        _logs.push({ idx: _idx, action: type, price: price, usdt: finalUSDT, note: note + ' [Frais: ' + feeAmount.toFixed(4) + '$]' });
+                        
+                    } else if (type === "SELL") {
+                        // Frais sur le montant de la vente (USDT)
+                        const usdtReceived = assetAmount * price; // Montant théorique de USDT reçu
+                        feeAmount = usdtReceived * REVOLUT_TAKER_FEE;
+                        
+                        // Déduction des frais de l'USDT reçu
+                        finalUSDT -= feeAmount; 
+                        
+                        _mem['TP_USDT'] = finalUSDT;
+                        _logs.push({ idx: _idx, action: type, price: price, usdt: finalUSDT, note: note + ' [Frais: ' + feeAmount.toFixed(4) + '$]' });
+                    }
                 }
-            } catch(e){
-                console.error("Erreur dans l'itération " + _idx + ": " + e.message);
+            };
+            // =======================================================
+
+            // --- BOUCLE DE SIMULATION ---
+            for(let i = 50; i < _prices.length; i++) {
+                _idx = i;
+                try { 
+                    if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
+                } catch(e){
+                    console.error("Erreur dans l'itération " + _idx + ": " + e.message);
+                }
             }
+
+            const finalPrice = _prices[_prices.length - 1];
+            const finalUSDT = parseFloat(_mem['TP_USDT']);
+            const finalBTC = parseFloat(_mem['TP_BTC']);
+            return { total: finalUSDT + (finalBTC * finalPrice), logs: _logs, trades: _logs.length };
+        `;
+
+        try {
+            const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
+            const result = vm(btcData, startCap, userScript);
+            
+            const pnl = result.total - startCap;
+            const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
+            document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
+            status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades) (Frais 0.09% inclus)`;
+
+            result.logs.forEach(l => {
+                const css = l.action === "BUY" ? "log-buy" : "log-sell";
+                logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
+            });
+        } catch(e) {
+            alert("Erreur critique du MOTEUR : " + e.message);
         }
-
-        const finalPrice = _prices[_prices.length - 1];
-        const finalUSDT = parseFloat(_mem['TP_USDT']);
-        const finalBTC = parseFloat(_mem['TP_BTC']);
-        return { total: finalUSDT + (finalBTC * finalPrice), logs: _logs, trades: _logs.length };
-    `;
-
-    try {
-        const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
-        const result = vm(btcData, startCap, userScript);
-        
-        const pnl = result.total - startCap;
-        const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
-        document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
-        status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades)`;
-
-        result.logs.forEach(l => {
-            const css = l.action === "BUY" ? "log-buy" : "log-sell";
-            logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
-        });
-    } catch(e) {
-        alert("Erreur critique du MOTEUR : " + e.message);
-    }
+    }, 50);
 }
 
 // Charger la configuration du Slot 1 au démarrage
