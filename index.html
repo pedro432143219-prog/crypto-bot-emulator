@@ -74,7 +74,7 @@
 
     <div class="editor-panel">
         <div class="editor-header">
-            <span>👇 Colle ton script ICI (Zone noire) :</span>
+            <span>👇 Colle ton script ICI (Frais Revolut X 0.09% Taker Inclus) :</span>
             <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
         </div>
         <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
@@ -196,6 +196,9 @@ function runSim() {
                 'TP_AVG': 0.0 
             };
             let _logs = [];
+            
+            // === CONSTANTE DES FRAIS DE REVOLUT X ===
+            const REVOLUT_TAKER_FEE = 0.0009; // 0.09%
 
             // Fonctions GAS simulées
             const PropertiesService = {
@@ -238,11 +241,42 @@ function runSim() {
             
             const getLatestPrice = () => _prices[_idx];
             const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
+            
+            // === FONCTION LOGACTION MODIFIÉE POUR INCLURE LES FRAIS ===
             const logAction = (type, price, assetAmount, usdtAmount, note) => {
                 if (type === "BUY" || type === "SELL") {
-                    _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
+                    
+                    let finalUSDT = usdtAmount;
+                    let feeAmount = 0;
+                    
+                    if (type === "BUY") {
+                        // Frais sur le montant acheté (USDT)
+                        const usdtUsed = assetAmount * price; // Montant théorique de USDT dépensé
+                        feeAmount = usdtUsed * REVOLUT_TAKER_FEE;
+                        
+                        // Le script utilisateur a déjà déduit le montant brut.
+                        // On déduit les frais du capital final.
+                        finalUSDT -= feeAmount; 
+                        
+                        _mem['TP_USDT'] = finalUSDT;
+                        _logs.push({ idx: _idx, action: type, price: price, usdt: finalUSDT, note: note + ' [Frais: ' + feeAmount.toFixed(4) + '$]' });
+                        
+                    } else if (type === "SELL") {
+                        // Frais sur le montant de la vente (USDT)
+                        const usdtReceived = assetAmount * price; // Montant théorique de USDT reçu
+                        feeAmount = usdtReceived * REVOLUT_TAKER_FEE;
+                        
+                        // Le script utilisateur a déjà ajouté le montant brut.
+                        // On déduit les frais du capital final.
+                        finalUSDT -= feeAmount; 
+                        
+                        _mem['TP_USDT'] = finalUSDT;
+                        _logs.push({ idx: _idx, action: type, price: price, usdt: finalUSDT, note: note + ' [Frais: ' + feeAmount.toFixed(4) + '$]' });
+                    }
+                    
                 }
             };
+            // =======================================================
 
             // --- BOUCLE DE SIMULATION ---
             for(let i = 200; i < _prices.length; i++) {
@@ -265,7 +299,7 @@ function runSim() {
             const pnl = result.total - startCap;
             const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
             document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
-            status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades)`;
+            status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades) (Frais 0.09% inclus)`;
 
             let logsHTML = "";
             const logsToDisplay = result.logs; 
