@@ -64,7 +64,7 @@
     <div class="input-group">
         <div class="input-wrapper">
             <label>Départ ($)</label>
-            <input type="number" id="startCap" value="1000">
+            <input type="number" id="startCap" value="20">
         </div>
         <div class="input-wrapper">
             <label>Fin ($)</label>
@@ -108,7 +108,8 @@ function loadSlotConfig(num) {
     const saved = localStorage.getItem('gas_sim_slot_' + num);
     if (saved) {
         const config = JSON.parse(saved);
-        document.getElementById('startCap').value = config.capital;
+        // Si une config existe déjà, on la charge, sinon on garde la valeur par défaut du HTML (20)
+        if(config.capital) document.getElementById('startCap').value = config.capital;
         document.getElementById('strategyScript').value = config.script;
     }
 }
@@ -124,7 +125,6 @@ async function loadDataBinance() {
     btnLoad.disabled = true;
     status.innerText = "Initialisation du téléchargement massif...";
     
-    // --- MODIFICATION ICI POUR 365 JOURS ---
     // 365 jours * 24 heures * 12 bougies de 5min = 105 120 bougies
     const TARGET_DAYS = 365;
     const TARGET_BOUGEES = TARGET_DAYS * 288; // 288 bougies de 5mn par jour
@@ -138,7 +138,6 @@ async function loadDataBinance() {
 
     try {
         for (let i = 0; i < NUM_REQUETES; i++) {
-            // Affichage de la progression pour l'utilisateur car c'est long
             status.innerText = `Chargement en cours (${i + 1}/${NUM_REQUETES}) - ${(allData.length/TARGET_BOUGEES*100).toFixed(0)}%`;
             
             const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=${LIMIT}&endTime=${endTime}`;
@@ -148,23 +147,18 @@ async function loadDataBinance() {
             
             if (!data || data.length === 0) break;
 
-            // On ajoute les nouvelles données au début du tableau (car on remonte le temps)
             allData = data.concat(allData);
-            
-            // On met à jour le endTime pour la prochaine requête (temps de la bougie la plus ancienne reçue)
             endTime = data[0][0]; 
 
-            // Pause légère pour éviter le ban IP de Binance (Rate Limit)
-            // Avec 100+ requêtes, il faut être prudent.
+            // Pause légère pour éviter le ban IP de Binance
             await new Promise(resolve => setTimeout(resolve, 60)); 
         }
 
-        // On découpe pour avoir exactement le nombre de jours demandés si on a dépassé
         if (allData.length > TARGET_BOUGEES) {
              allData = allData.slice(allData.length - TARGET_BOUGEES);
         }
 
-        // Extraire uniquement les prix de clôture (Close price index 4)
+        // Extraire uniquement les prix de clôture
         btcData = allData.map(c => parseFloat(c[4])); 
         
         status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (1 an). Prêt !`;
@@ -191,7 +185,6 @@ function runSim() {
     logsDiv.innerHTML = "";
     status.innerText = "Simulation en cours...";
 
-    // Utilisation d'un setTimeout pour laisser le DOM se mettre à jour avant le gros calcul
     setTimeout(() => {
         // Moteur d'émulation
         const emulatorCode = `
@@ -240,7 +233,6 @@ function runSim() {
             if (userScript.trim().length > 0) {
                 ${userScript}
             } else {
-                // Script de secours si vide
                 function runTrendPullbackBot_5m() { return; }
             }
             
@@ -253,14 +245,11 @@ function runSim() {
             };
 
             // --- BOUCLE DE SIMULATION ---
-            // On commence à 200 pour avoir assez d'historique pour les moyennes mobiles
             for(let i = 200; i < _prices.length; i++) {
                 _idx = i;
                 try { 
                     if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
-                } catch(e){
-                    // Ignorer les erreurs mineures
-                }
+                } catch(e){ }
             }
 
             const finalPrice = _prices[_prices.length - 1];
@@ -278,7 +267,6 @@ function runSim() {
             document.getElementById('finalCapDisplay').value = result.total.toFixed(2) + " $";
             status.innerHTML = `Résultat : <b style="color:${color}">${(pnl>0?"+":"") + pnl.toFixed(2)}$</b> (${result.trades} Trades)`;
 
-            // Affichage optimisé des logs (limité aux 500 derniers si trop nombreux pour éviter le lag)
             let logsHTML = "";
             const logsToDisplay = result.logs; 
             
