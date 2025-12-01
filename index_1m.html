@@ -265,7 +265,8 @@ function runSim() {
                 props.setProperty("TP_AVG", state.avg);
             }
 
-            function runTrendPullbackBot_5m() {
+            // Script de test exécuté si la zone noire est vide
+            function runTrendPullbackBot_1m() {
                 const currentPrice = getLatestPrice();
                 let state = tp_loadState();
 
@@ -333,11 +334,16 @@ function runSim() {
             }
         };
 
-        // --- BOUCLE DE SIMULATION ---
+        // --- BOUCLE DE SIMULATION (VÉRIFIE MAINTENANT LES DEUX NOMS) ---
         for(let i = 50; i < _prices.length; i++) {
             _idx = i;
             try { 
-                if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
+                // VÉRIFICATION DÉFINITIVE : Tente d'appeler 5m OU 1m
+                if(typeof runTrendPullbackBot_5m === 'function') {
+                    runTrendPullbackBot_5m();
+                } else if (typeof runTrendPullbackBot_1m === 'function') {
+                    runTrendPullbackBot_1m();
+                } 
             } catch(e){
                 console.error("Erreur dans l'itération " + _idx + ": " + e.message);
             }
