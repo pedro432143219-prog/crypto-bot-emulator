@@ -117,6 +117,7 @@ function clearScript() {
 }
 
 // === CHARGEMENT DES DONNÉES BINANCE (7 Jours @ 1 Minute) ===
+// CODE CORRIGÉ POUR L'INDEXATION TEMPORELLE
 async function loadDataBinance() {
     const status = document.getElementById('status');
     status.innerText = "Calcul du nombre de requêtes...";
@@ -127,29 +128,35 @@ async function loadDataBinance() {
     const NUM_REQUETES = Math.ceil(TARGET_BOUGEES / LIMIT);
     
     let allData = [];
-    let endTime = Date.now(); // Commence à l'heure actuelle
+    // Début il y a 7 jours (en millisecondes)
+    let startTime = Date.now() - (7 * 24 * 60 * 60 * 1000); 
     
     try {
         for (let i = 0; i < NUM_REQUETES; i++) {
             status.innerText = `Chargement 1-Minute (${i + 1}/${NUM_REQUETES})...`;
             
-            // Intervalle réglé sur 1m
-            const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${LIMIT}&endTime=${endTime}`;
+            // On utilise startTime et on avance le temps à chaque requête
+            const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${LIMIT}&startTime=${startTime}`;
             
             const response = await fetch(url);
             const data = await response.json();
             
             if (!data || data.length === 0) break;
 
-            allData = data.concat(allData);
+            allData = allData.concat(data);
             
-            endTime = data[0][0]; 
+            // On avance le temps de début après la dernière bougie récupérée + 1 milliseconde
+            startTime = data[data.length - 1][0] + 1; 
 
+            // Pause pour éviter de surcharger Binance (sinon ça peut planter)
             await new Promise(resolve => setTimeout(resolve, 50)); 
         }
 
         // Extraire les prix de clôture
-        btcData = allData.slice(allData.length - TARGET_BOUGEES).map(c => parseFloat(c[4])); 
+        btcData = allData.map(c => parseFloat(c[4])); 
+        if (btcData.length > TARGET_BOUGEES) {
+             btcData = btcData.slice(btcData.length - TARGET_BOUGEES);
+        }
         
         status.innerHTML = `✅ <b>${btcData.length}</b> bougies chargées (7 jours @ 1m).`;
         document.getElementById('btnRun').disabled = false;
@@ -209,8 +216,7 @@ function runSim() {
                     }),
                     getLastRow: () => _idx + 2,
                     appendRow: (arr) => {}
-                }),
-                insertSheet: () => {}
+                })
             })
         };
 
@@ -270,6 +276,7 @@ function runSim() {
     `;
 
     try {
+        // Exécution dans un environnement isolé
         const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
         const result = vm(btcData, startCap, userScript);
         
