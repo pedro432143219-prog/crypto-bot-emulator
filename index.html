@@ -1,94 +1,3 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart DCA Emulator</title>
-    <style>
-        /* STYLE (CSS) */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 10px; }
-        .container { max-width: 100%; background: #16213e; border-radius: 10px; padding: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        h1 { text-align: center; color: #f0a500; font-size: 1.2rem; margin-bottom: 15px; }
-        
-        /* Boutons Slots */
-        .slots-container { display: flex; gap: 5px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap; }
-        .slot-btn { background: #0f3460; border: 1px solid #533483; color: #aaa; padding: 5px 10px; cursor: pointer; border-radius: 5px; font-size: 0.8rem; }
-        .slot-btn.active { background: #f0a500; color: #000; font-weight: bold; border-color: #f0a500; }
-        .action-btn { background: #2196f3; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
-        
-        /* Nouveau bouton Effacer */
-        .btn-clear { background: #ff4d4d; color: white; }
-
-        /* Inputs */
-        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-        .input-wrapper { flex: 1; }
-        label { display: block; margin-bottom: 3px; color: #888; font-size: 0.75rem; }
-        input { width: 100%; padding: 8px; background: #0f3460; border: 1px solid #533483; color: white; border-radius: 5px; }
-        
-        /* Zone de code (Noir) */
-        .editor-panel { margin-bottom: 15px; }
-        .editor-header { color: #f0a500; font-size: 0.8rem; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
-        textarea#strategyScript {
-            width: 100%; height: 250px; /* Moins haut pour mobile */
-            background: #080808; color: #d4d4d4; border: 1px solid #333;
-            border-radius: 5px; padding: 10px; font-family: monospace; font-size: 11px;
-            white-space: pre; overflow: auto;
-        }
-
-        /* Gros boutons d'action */
-        .main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
-        button.big-btn { border: none; padding: 12px; border-radius: 5px; font-weight: bold; font-size: 0.85rem; cursor: pointer; color: #000; }
-        .btn-load { background: #f0a500; }
-        .btn-run { background: #4caf50; color: white; }
-        button:disabled { opacity: 0.5; }
-
-        /* Logs */
-        .status-bar { text-align: center; font-size: 0.9rem; margin-bottom: 10px; }
-        .logs-panel { background: #000; padding: 10px; border-radius: 5px; height: 200px; overflow-y: scroll; font-family: monospace; font-size: 10px; border: 1px solid #333; }
-        .log-buy { color: #00ff00; }
-        .log-sell { color: #ff0055; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h1>🧬 Emulateur GAS (Mobile)</h1>
-    
-    <div class="slots-container">
-        <button class="slot-btn active" onclick="selectSlot(1)">Slot 1</button>
-        <button class="slot-btn" onclick="selectSlot(2)">Slot 2</button>
-        <button class="action-btn" onclick="saveCurrentConfig()">💾 SAVE</button>
-    </div>
-
-    <div class="input-group">
-        <div class="input-wrapper">
-            <label>Départ ($)</label>
-            <input type="number" id="startCap" value="20">
-        </div>
-        <div class="input-wrapper">
-            <label>Fin ($)</label>
-            <input type="text" id="finalCapDisplay" value="-" readonly>
-        </div>
-    </div>
-
-    <div class="editor-panel">
-        <div class="editor-header">
-            <span>👇 Colle ton script ICI (Zone noire) :</span>
-            <button class="action-btn btn-clear" onclick="clearScript()">🗑️ Effacer</button>
-        </div>
-        <textarea id="strategyScript" spellcheck="false" placeholder="// Colle ton script ici..."></textarea>
-    </div>
-
-    <div class="main-actions">
-        <button class="big-btn btn-load" onclick="loadDataBinance()">1. CHARGER DONNÉES (7 Jours / 5 Min)</button>
-        <button class="big-btn btn-run" id="btnRun" onclick="runSim()" disabled>2. LANCER</button>
-    </div>
-    
-    <div id="status" class="status-bar">En attente...</div>
-    <div id="logs" class="logs-panel">Logs...</div>
-</div>
-
 <script>
 // --- JAVASCRIPT SYSTEME (NE PAS TOUCHER) ---
 let btcData = []; 
@@ -112,7 +21,6 @@ function loadSlotConfig(num) {
         document.getElementById('strategyScript').value = config.script;
     }
 }
-// NOUVELLE FONCTION : EFFACER LE SCRIPT
 function clearScript() {
     document.getElementById('strategyScript').value = '';
 }
@@ -127,12 +35,11 @@ async function loadDataBinance() {
         const response1 = await fetch(url1);
         const d1 = await response1.json();
         
-        // Trouver la date de la bougie la plus ancienne du premier lot
         const oldestTime = d1[0][0]; 
 
         status.innerText = "Chargement (2/2)...";
         
-        // 2. Récupérer les 1000 bougies précédentes, en utilisant 'endTime'
+        // 2. Récupérer les 1000 bougies précédentes
         const url2 = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=1000&endTime=${oldestTime}`;
         const response2 = await fetch(url2);
         const d2 = await response2.json();
@@ -166,8 +73,6 @@ function runSim() {
     const emulatorCode = `
         let _idx = 0;
         let _prices = pricesArray;
-        // CORRECTION MAJEURE: Force la réinitialisation de la mémoire TP_USDT à initialCapital
-        // pour corriger le bug de persistance du solde faible.
         let _mem = { 
             'TP_USDT': initialCapital, 
             'TP_BTC': 0.0, 
@@ -175,11 +80,10 @@ function runSim() {
         };
         let _logs = [];
 
+        // Fonctions GAS simulées
         const PropertiesService = {
             getScriptProperties: () => ({
                 getProperty: (k) => _mem[k],
-                // BUG CORRIGÉ ICI: Assure que la valeur stockée est un nombre (float)
-                // pour éviter les problèmes de concaténation de chaînes (ex: 10 + 2 -> "102")
                 setProperty: (k, v) => _mem[k] = parseFloat(v), 
                 deleteProperty: (k) => delete _mem[k]
             })
@@ -196,36 +100,61 @@ function runSim() {
                     getRange: (r, c, nr, nc) => ({
                         getValue: () => _prices[_idx],
                         getValues: () => {
-                            // Simulation historique simple
                             const end = _idx; 
                             const start = Math.max(0, end - nr + 1);
                             return _prices.slice(start, end + 1).map(p => [p]);
                         }
                     }),
                     getLastRow: () => _idx + 2,
-                    appendRow: (arr) => {
-                        // Simulation de l'ajout de ligne
-                    }
+                    appendRow: (arr) => {}
                 }),
                 insertSheet: () => {}
             })
         };
 
-        ${userScript}
+        // --- INJECTION DU SCRIPT UTILISATEUR OU DU SCRIPT DE TEST ---
+        if (userScript.trim().length > 0) {
+            // Le script de l'utilisateur existe : on l'injecte
+            ${userScript}
+        } else {
+            // Le script est vide : on injecte le script de TEST FORCE
+            function runTrendPullbackBot_5m() {
+                const currentPrice = getLatestPrice();
+                const btcToBuy = 1.0; // Acheter 1.0 USDT pour le test
+                
+                let state = {
+                    usdt: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_USDT")),
+                    btc: parseFloat(PropertiesService.getScriptProperties().getProperty("TP_BTC"))
+                };
 
+                // ACHAT FORCE AU PREMIER CYCLE
+                if (state.btc === 0 && state.usdt >= 1) { 
+                    const usdtUsed = btcToBuy;
+                    const btcBought = usdtUsed / currentPrice;
+                    
+                    PropertiesService.getScriptProperties().setProperty("TP_USDT", state.usdt - usdtUsed);
+                    PropertiesService.getScriptProperties().setProperty("TP_BTC", btcBought);
+                    PropertiesService.getScriptProperties().setProperty("TP_AVG", currentPrice);
+                    
+                    logAction("BUY", currentPrice, btcBought, usdtUsed, "TEST FORCE MOTEUR REUSSI");
+                    return;
+                }
+            }
+        }
+        
+        // Définition des fonctions utilitaires pour que le script utilisateur puisse les appeler
+        const getLatestPrice = () => _prices[_idx];
+        const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
+        const logAction = (type, price, assetAmount, usdtAmount, note) => {
+            if (type === "BUY" || type === "SELL") {
+                _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
+            }
+        };
+
+        // --- BOUCLE DE SIMULATION ---
         for(let i = 50; i < _prices.length; i++) {
             _idx = i;
             try { 
-                // Fonctions de l'émulateur mises à disposition du script utilisateur
-                const getLatestPrice = () => _prices[_idx];
-                const getPriceHistory = (limit) => _prices.slice(Math.max(0, _idx - limit + 1), _idx + 1);
-                const logAction = (type, price, assetAmount, usdtAmount, note) => {
-                    // Simulation du log et de l'appendRow de la feuille de calcul
-                    if (type === "BUY" || type === "SELL") {
-                        _logs.push({ idx: _idx, action: type, price: price, usdt: usdtAmount, note: note });
-                    }
-                };
-
                 if(typeof runTrendPullbackBot_5m === 'function') runTrendPullbackBot_5m(); 
             } catch(e){
                 console.error("Erreur dans l'itération " + _idx + ": " + e.message);
@@ -239,9 +168,8 @@ function runSim() {
     `;
 
     try {
-        const vm = new Function('pricesArray', 'initialCapital', emulatorCode);
-        // Utilise startCap comme capital initial
-        const result = vm(btcData, startCap);
+        const vm = new Function('pricesArray', 'initialCapital', 'userScript', emulatorCode);
+        const result = vm(btcData, startCap, userScript);
         
         const pnl = result.total - startCap;
         const color = pnl >= 0 ? "#4caf50" : "#ff4d4d";
@@ -253,9 +181,7 @@ function runSim() {
             logsDiv.innerHTML += `<div class="log-entry ${css}">[${l.idx}] <b>${l.action}</b> @ ${l.price} | Solde: ${parseFloat(l.usdt).toFixed(2)} | ${l.note}</div>`;
         });
     } catch(e) {
-        alert("Erreur dans VOTRE script (zone noire) : " + e.message);
+        alert("Erreur critique du MOTEUR : " + e.message);
     }
 }
 </script>
-</body>
-</html>
